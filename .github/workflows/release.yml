@@ -72,15 +72,33 @@ jobs:
         run: |
           pyinstaller -F -n vibe${{ matrix.suffix }} vibe.py
 
-      - name: Debug dist directory contents
+      - name: Debug dist directory contents (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           ls -la dist/
 
-      - name: Debug project root directory
+      - name: Debug dist directory contents (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          Get-ChildItem -Path dist/ -Force
+
+      - name: Debug project root directory (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           ls -la
           echo "GITHUB_REF_NAME: ${GITHUB_REF_NAME}"
           echo "Tag: ${{ github.ref_name }}"
+
+      - name: Debug project root directory (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          Get-ChildItem -Path . -Force
+          Write-Host "GITHUB_REF_NAME: $env:GITHUB_REF_NAME"
+          Write-Host "Tag: ${{ github.ref_name }}"
 
       - name: Create release directory
         run: mkdir -p release
