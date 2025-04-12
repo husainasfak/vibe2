@@ -78,14 +78,21 @@ jobs:
           cd dist
           ${{ matrix.cmd }} ../release/vibe_${GITHUB_REF_NAME}_${{ matrix.target }}.${{ matrix.ext }} vibe${{ matrix.suffix }}
 
-      - name: Generate checksum
+      - name: Generate checksum (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
         run: |
           cd release
-          if [ "${{ runner.os }}" == "Windows" ]; then
-            certutil -hashfile vibe_${GITHUB_REF_NAME}_${{ matrix.target }}.${{ matrix.ext }} SHA256 | grep -v "CertUtil" > checksums.txt
-          else
-            shasum -a 256 vibe_${GITHUB_REF_NAME}_${{ matrix.target }}.${{ matrix.ext }} > checksums.txt
-          fi
+          shasum -a 256 vibe_${GITHUB_REF_NAME}_${{ matrix.target }}.${{ matrix.ext }} > checksums.txt
+
+      - name: Generate checksum (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          cd release
+          $file = "vibe_${env:GITHUB_REF_NAME}_${{ matrix.target }}.${{ matrix.ext }}"
+          $hash = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLower()
+          "$hash  $file" | Out-File -Encoding utf8 checksums.txt
 
       - uses: actions/upload-artifact@v4
         with:
