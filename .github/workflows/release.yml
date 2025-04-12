@@ -13,33 +13,33 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-12
+          - os: macos-latest
             target: darwin_amd64
             suffix: ""
             ext: tar.gz
             cmd: tar -czvf
 
-          - os: macos-12
+          - os: macos-latest
             target: darwin_arm64
             suffix: ""
             ext: tar.gz
             cmd: tar -czvf
             conda_subdir: osx-arm64
 
-          - os: ubuntu-22.04
+          - os: ubuntu-latest
             target: linux_amd64
             suffix: ""
             ext: tar.gz
             cmd: tar -czvf
 
-          - os: ubuntu-22.04
+          - os: ubuntu-latest
             target: linux_arm64
             suffix: ""
             ext: tar.gz
             cmd: tar -czvf
             conda_subdir: linux-arm64
 
-          - os: windows-2022
+          - os: windows-latest
             target: windows_amd64
             suffix: ".exe"
             ext: zip
@@ -57,6 +57,15 @@ jobs:
         run: |
           pip install pyinstaller build
 
+      - name: Set cross-compilation for ARM64
+        if: contains(matrix.target, 'arm64')
+        shell: bash
+        run: |
+          echo "Setting up cross-compilation environment for ARM64"
+          if [[ "${{ matrix.target }}" == *"darwin"* ]]; then
+            echo "ARCHFLAGS=-arch arm64" >> $GITHUB_ENV
+          fi
+
       - name: Build executable
         env:
           CONDA_SUBDIR: ${{ matrix.conda_subdir }}
@@ -72,7 +81,11 @@ jobs:
       - name: Generate checksum
         run: |
           cd release
-          shasum -a 256 vibe_${GITHUB_REF_NAME}_${{ matrix.target }}.${{ matrix.ext }} > checksums.txt
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            certutil -hashfile vibe_${GITHUB_REF_NAME}_${{ matrix.target }}.${{ matrix.ext }} SHA256 | grep -v "CertUtil" > checksums.txt
+          else
+            shasum -a 256 vibe_${GITHUB_REF_NAME}_${{ matrix.target }}.${{ matrix.ext }} > checksums.txt
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -96,7 +109,7 @@ jobs:
 
       - name: Copy release files
         run: |
-          find artifacts -name "*.tar.gz" -o -name "*.zip" -exec cp {} release/ \;
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release/ \;
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
