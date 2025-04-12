@@ -8,73 +8,77 @@ on:
 jobs:
   build-and-release:
     name: Build and Release
-    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-12
-            TARGET: macos
-            python-version: "3.10"
-            CMD_BUILD: |
-              pyinstaller -F -n vibe vibe.py
-              cd dist && zip vibe_mac.zip vibe
-              mv vibe_mac.zip ../
-            OUT_FILE_NAME: vibe_mac.zip
-            ASSET_MIME: application/zip
+            target: macos
+            python_version: "3.10"
+            out_file: vibe_mac.zip
+            asset_mime: application/zip
 
           - os: windows-2022
-            TARGET: windows
-            python-version: "3.10.11"
-            CMD_BUILD: |
-              pyinstaller -F -n vibe vibe.py
-              cd dist
-              Compress-Archive -Path vibe.exe -DestinationPath vibe_win.zip
-              mv vibe_win.zip ../
-            OUT_FILE_NAME: vibe_win.zip
-            ASSET_MIME: application/zip
+            target: windows
+            python_version: "3.10.11"
+            out_file: vibe_win.zip
+            asset_mime: application/zip
 
           - os: ubuntu-22.04
-            TARGET: linux
-            python-version: "3.10"
-            CMD_BUILD: |
-              pyinstaller -F -n vibe vibe.py
-              cd dist && tar -czvf vibe_linux.tar.gz vibe
-              mv vibe_linux.tar.gz ../
-            OUT_FILE_NAME: vibe_linux.tar.gz
-            ASSET_MIME: application/gzip
+            target: linux
+            python_version: "3.10"
+            out_file: vibe_linux.tar.gz
+            asset_mime: application/gzip
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ matrix.python-version }}
-          cache: 'pip'
+          python-version: ${{ matrix.python_version }}
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
+          pip install -r requirements.txt pyinstaller
 
-      - name: Build Application for ${{ matrix.TARGET }}
-        run: ${{ matrix.CMD_BUILD }}
-
-      - name: Verify Artifacts
+      - name: Build (macOS)
+        if: matrix.os == 'macos-12'
         run: |
-          ls -la
-          ls -la dist/
+          pyinstaller -F -n vibe vibe.py
+          cd dist && zip ../vibe_mac.zip vibe
+        shell: bash
 
-      - name: Create Release and Upload Asset
+      - name: Build (Windows)
+        if: matrix.os == 'windows-2022'
+        run: |
+          pyinstaller -F -n vibe vibe.py
+          cd dist
+          7z a ../vibe_win.zip vibe.exe
+        shell: cmd
+
+      - name: Build (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          pyinstaller -F -n vibe vibe.py
+          cd dist && tar -czvf ../vibe_linux.tar.gz vibe
+        shell: bash
+
+      - name: Verify artifacts
+        run: |
+          ls -lah
+          [ -f "${{ matrix.out_file }}" ] || exit 1
+        shell: bash
+
+      - name: Upload release assets
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: ${{ matrix.OUT_FILE_NAME }}
+          files: ${{ matrix.out_file }}
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
         env:
