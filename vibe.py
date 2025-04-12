@@ -10,6 +10,7 @@ secret = os.getenv('SECRET')
 def health():
     try:
         print("Hey I am doing fine")
+        print("Hey I am doing fine")
         print(secret)
     except Exception as e:
         print("Error:", e)
