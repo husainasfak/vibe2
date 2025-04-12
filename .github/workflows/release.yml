@@ -24,8 +24,7 @@ jobs:
             suffix: ""
             ext: tar.gz
             cmd: tar -czvf
-            env:
-              CONDA_SUBDIR: osx-arm64
+            conda_subdir: osx-arm64
 
           - os: ubuntu-22.04
             target: linux_amd64
@@ -38,8 +37,7 @@ jobs:
             suffix: ""
             ext: tar.gz
             cmd: tar -czvf
-            env:
-              CONDA_SUBDIR: linux-arm64
+            conda_subdir: linux-arm64
 
           - os: windows-2022
             target: windows_amd64
@@ -60,6 +58,8 @@ jobs:
           pip install pyinstaller build
 
       - name: Build executable
+        env:
+          CONDA_SUBDIR: ${{ matrix.conda_subdir }}
         run: |
           pyinstaller -F -n vibe${{ matrix.suffix }} vibe.py
 
@@ -72,11 +72,11 @@ jobs:
       - name: Generate checksum
         run: |
           cd release
-          shasum -a 256 vibe_${GITHUB_REF_NAME}_${{ matrix.target }}.${{ matrix.ext }} >> checksums.txt
+          shasum -a 256 vibe_${GITHUB_REF_NAME}_${{ matrix.target }}.${{ matrix.ext }} > checksums.txt
 
       - uses: actions/upload-artifact@v3
         with:
-          name: artifacts
+          name: release-${{ matrix.target }}
           path: release/
           if-no-files-found: error
 
@@ -87,20 +87,24 @@ jobs:
     steps:
       - uses: actions/download-artifact@v3
         with:
-          name: artifacts
-          path: release
+          path: artifacts
 
       - name: Combine checksums
         run: |
-          cat release/*/checksums.txt | sort | uniq > release/checksums.txt
+          mkdir -p release
+          cat artifacts/*/checksums.txt > release/checksums.txt
+
+      - name: Copy release files
+        run: |
+          find artifacts -name "*.tar.gz" -o -name "*.zip" -exec cp {} release/ \;
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
             release/checksums.txt
-            release/*/*.tar.gz
-            release/*/*.zip
+            release/*.tar.gz
+            release/*.zip
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
         env:
