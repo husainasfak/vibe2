@@ -72,27 +72,71 @@ jobs:
         run: |
           pyinstaller -F -n vibe${{ matrix.suffix }} vibe.py
 
-      - name: Package artifact
+      - name: Debug dist directory contents
         run: |
-          mkdir -p release
+          ls -la dist/
+
+      - name: Debug project root directory
+        run: |
+          ls -la
+          echo "GITHUB_REF_NAME: ${GITHUB_REF_NAME}"
+          echo "Tag: ${{ github.ref_name }}"
+
+      - name: Create release directory
+        run: mkdir -p release
+
+      - name: Package artifact (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
           cd dist
-          ${{ matrix.cmd }} ../release/vibe_${GITHUB_REF_NAME}_${{ matrix.target }}.${{ matrix.ext }} vibe${{ matrix.suffix }}
+          ${{ matrix.cmd }} ../release/vibe_${{ github.ref_name }}_${{ matrix.target }}.${{ matrix.ext }} vibe${{ matrix.suffix }}
+
+      - name: Package artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          cd dist
+          $tagName = "${{ github.ref_name }}"
+          $targetName = "${{ matrix.target }}"
+          $extension = "${{ matrix.ext }}"
+          $executableName = "vibe${{ matrix.suffix }}"
+          
+          Write-Host "Creating zip archive with 7z"
+          Write-Host "Tag: $tagName"
+          Write-Host "Target: $targetName"
+          Write-Host "Extension: $extension"
+          Write-Host "Executable: $executableName"
+          
+          7z a "..\release\vibe_${tagName}_${targetName}.${extension}" "$executableName"
+          
+          Write-Host "Contents of release directory:"
+          Get-ChildItem -Path ..\release
 
       - name: Generate checksum (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
           cd release
-          shasum -a 256 vibe_${GITHUB_REF_NAME}_${{ matrix.target }}.${{ matrix.ext }} > checksums.txt
+          shasum -a 256 vibe_${{ github.ref_name }}_${{ matrix.target }}.${{ matrix.ext }} > checksums.txt
 
       - name: Generate checksum (Windows)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
           cd release
-          $file = "vibe_${env:GITHUB_REF_NAME}_${{ matrix.target }}.${{ matrix.ext }}"
-          $hash = (Get-FileHash -Algorithm SHA256 $file).Hash.ToLower()
-          "$hash  $file" | Out-File -Encoding utf8 checksums.txt
+          Get-ChildItem -Path . | ForEach-Object { Write-Host $_.Name }
+          $zipFile = Get-ChildItem -Path . -Filter "*.zip" | Select-Object -First 1
+          
+          if ($zipFile) {
+            Write-Host "Found zip file: $($zipFile.Name)"
+            $hash = (Get-FileHash -Algorithm SHA256 $zipFile.Name).Hash.ToLower()
+            "$hash  $($zipFile.Name)" | Out-File -Encoding utf8 checksums.txt
+            Get-Content checksums.txt
+          } else {
+            Write-Host "No zip files found in release directory!"
+            exit 1
+          }
 
       - uses: actions/upload-artifact@v4
         with:
@@ -109,22 +153,29 @@ jobs:
         with:
           path: artifacts
 
+      - name: Debug downloaded artifacts
+        run: |
+          find artifacts -type f | sort
+
       - name: Combine checksums
         run: |
           mkdir -p release
           cat artifacts/*/checksums.txt > release/checksums.txt
+          cat release/checksums.txt
 
       - name: Copy release files
         run: |
-          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec cp {} release/ \;
+          cp artifacts/*/vibe_*.*gz release/ || echo "No gz files found"
+          cp artifacts/*/vibe_*.zip release/ || echo "No zip files found"
+          ls -la release/
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
             release/checksums.txt
-            release/*.tar.gz
-            release/*.zip
+            release/vibe_*.*gz
+            release/vibe_*.zip
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
         env:
