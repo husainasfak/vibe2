@@ -2,7 +2,7 @@
 set -e
 
 # Repository information
-REPO="husainasfak/vibe"  # Replace with your actual GitHub username/repo
+REPO="husainasfak/vibe2"  # Replace with your actual GitHub username/repo
 LATEST_RELEASE=$(curl -s https://api.github.com/repos/$REPO/releases/latest | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
 VERSION=$(echo $LATEST_RELEASE | sed 's/^v//')
 
