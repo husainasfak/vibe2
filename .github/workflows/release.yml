@@ -1,84 +1,106 @@
-name: Build and Release Python CLI
+name: Build and Release
 
 on:
   push:
     tags:
-      - 'v*' # Trigger workflow on tags matching v*
+      - 'v*'
 
 jobs:
-  build-and-release:
-    name: Build and Release
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-12
-            target: macos
-            python_version: "3.10"
-            out_file: vibe_mac.zip
-            asset_mime: application/zip
+            target: darwin_amd64
+            suffix: ""
+            ext: tar.gz
+            cmd: tar -czvf
 
-          - os: windows-2022
-            target: windows
-            python_version: "3.10.11"
-            out_file: vibe_win.zip
-            asset_mime: application/zip
+          - os: macos-12
+            target: darwin_arm64
+            suffix: ""
+            ext: tar.gz
+            cmd: tar -czvf
+            env:
+              CONDA_SUBDIR: osx-arm64
 
           - os: ubuntu-22.04
-            target: linux
-            python_version: "3.10"
-            out_file: vibe_linux.tar.gz
-            asset_mime: application/gzip
+            target: linux_amd64
+            suffix: ""
+            ext: tar.gz
+            cmd: tar -czvf
 
-    runs-on: ${{ matrix.os }}
+          - os: ubuntu-22.04
+            target: linux_arm64
+            suffix: ""
+            ext: tar.gz
+            cmd: tar -czvf
+            env:
+              CONDA_SUBDIR: linux-arm64
+
+          - os: windows-2022
+            target: windows_amd64
+            suffix: ".exe"
+            ext: zip
+            cmd: 7z a
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ matrix.python_version }}
+          python-version: "3.10"
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
+          pip install pyinstaller build
 
-      - name: Build (macOS)
-        if: matrix.os == 'macos-12'
+      - name: Build executable
         run: |
-          pyinstaller -F -n vibe vibe.py
-          cd dist && zip ../vibe_mac.zip vibe
-        shell: bash
+          pyinstaller -F -n vibe${{ matrix.suffix }} vibe.py
 
-      - name: Build (Windows)
-        if: matrix.os == 'windows-2022'
+      - name: Package artifact
         run: |
-          pyinstaller -F -n vibe vibe.py
+          mkdir -p release
           cd dist
-          7z a ../vibe_win.zip vibe.exe
-        shell: cmd
+          ${{ matrix.cmd }} ../release/vibe_${GITHUB_REF_NAME}_${{ matrix.target }}.${{ matrix.ext }} vibe${{ matrix.suffix }}
 
-      - name: Build (Linux)
-        if: matrix.os == 'ubuntu-22.04'
+      - name: Generate checksum
         run: |
-          pyinstaller -F -n vibe vibe.py
-          cd dist && tar -czvf ../vibe_linux.tar.gz vibe
-        shell: bash
+          cd release
+          shasum -a 256 vibe_${GITHUB_REF_NAME}_${{ matrix.target }}.${{ matrix.ext }} >> checksums.txt
 
-      - name: Verify artifacts
-        run: |
-          ls -lah
-          [ -f "${{ matrix.out_file }}" ] || exit 1
-        shell: bash
-
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
+      - uses: actions/upload-artifact@v3
         with:
-          files: ${{ matrix.out_file }}
+          name: artifacts
+          path: release/
+          if-no-files-found: error
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v3
+        with:
+          name: artifacts
+          path: release
+
+      - name: Combine checksums
+        run: |
+          cat release/*/checksums.txt | sort | uniq > release/checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release/checksums.txt
+            release/*/*.tar.gz
+            release/*/*.zip
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
         env:
